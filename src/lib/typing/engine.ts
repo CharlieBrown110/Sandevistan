@@ -39,7 +39,7 @@ export function applyKey(state: EngineState, key: string, tMs: number): EngineSt
   let words = state.words;
   let currentWordIndex = state.currentWordIndex;
   let currentInput = state.currentInput;
-  let isFinished = state.isFinished;
+  let isFinished: boolean = state.isFinished;
   let totalKeysPressed = state.totalKeysPressed;
   let correctKeysPressed = state.correctKeysPressed;
   const events: KeyEvent[] = [...state.events, [tMs, key]];

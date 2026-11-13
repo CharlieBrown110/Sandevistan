@@ -1,12 +1,20 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { CyberCard } from '@/components/ui/CyberCard';
 import { CyberButton } from '@/components/ui/CyberButton';
 import { Zap, Github, Chrome, ShieldAlert, Sparkles } from 'lucide-react';
 
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex-1 flex items-center justify-center"><span className="text-gray-400 font-mono">Loading...</span></div>}>
+      <LoginContent />
+    </Suspense>
+  );
+}
+
+function LoginContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const callbackUrl = searchParams.get('callbackURL') || searchParams.get('redirect') || '/tournaments';

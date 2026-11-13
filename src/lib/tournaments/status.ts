@@ -1,9 +1,13 @@
 export type TournamentStatus = 'upcoming' | 'active' | 'ended' | 'canceled';
 
 export interface TournamentStatusInput {
-  starts_at: string | Date;
-  ends_at: string | Date;
+  starts_at?: string | Date;
+  ends_at?: string | Date;
   canceled_at?: string | Date | null;
+  // Also accept camelCase (from in-memory store)
+  startsAt?: string | Date;
+  endsAt?: string | Date;
+  canceledAt?: string | Date | null;
 }
 
 /**
@@ -13,13 +17,16 @@ export function getTournamentStatus(
   tournament: TournamentStatusInput,
   referenceDate: Date = new Date()
 ): TournamentStatus {
-  if (tournament.canceled_at) {
+  const canceledAt = tournament.canceled_at ?? tournament.canceledAt;
+  if (canceledAt) {
     return 'canceled';
   }
 
   const nowMs = referenceDate.getTime();
-  const startMs = new Date(tournament.starts_at).getTime();
-  const endMs = new Date(tournament.ends_at).getTime();
+  const startsAt = tournament.starts_at ?? tournament.startsAt;
+  const endsAt = tournament.ends_at ?? tournament.endsAt;
+  const startMs = new Date(startsAt!).getTime();
+  const endMs = new Date(endsAt!).getTime();
 
   if (nowMs < startMs) {
     return 'upcoming';

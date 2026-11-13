@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #07080c;
+  --bg-panel: #0e1017;
+  --text-main: #f3f4f6;
+  --text-dim: #6b7280;
+  --color-yellow: #fcee09;
+  --color-cyan: #00f0ff;
+  --color-magenta: #ff0055;
+  --border-cyber: #2a2f45;
+}
+
+.light {
+  --bg-primary: #f1f5f9;
+  --bg-panel: #ffffff;
+  --text-main: #0f172a;
+  --text-dim: #475569;
+  --color-yellow: #c69200;
+  --color-cyan: #008b9e;
+  --color-magenta: #d80032;
+  --border-cyber: #cbd5e1;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-main);
+  min-height: 100vh;
+  position: relative;
+  overflow-x: hidden;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+/* Futuristic Scanline Effect */
+.cyber-scanlines::before {
+  content: " ";
+  display: block;
+  position: fixed;
+  top: 0; left: 0; bottom: 0; right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  z-index: 40;
+  background-size: 100% 3px, 6px 100%;
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+.light .cyber-scanlines::before {
+  opacity: 0.15;
+}
+
+/* Subtle cyber grid backdrop */
+.cyber-grid {
+  background-size: 40px 40px;
+  background-image: 
+    linear-gradient(to right, rgba(42, 47, 69, 0.25) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(42, 47, 69, 0.25) 1px, transparent 1px);
+}
+
+.light .cyber-grid {
+  background-image: 
+    linear-gradient(to right, rgba(203, 213, 225, 0.5) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(203, 213, 225, 0.5) 1px, transparent 1px);
+}

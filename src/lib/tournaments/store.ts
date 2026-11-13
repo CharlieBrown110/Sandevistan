@@ -579,9 +579,9 @@ class TournamentStore {
           isNewBest: false,
           rank: myRank,
           totalParticipants: lb.length,
-          best: participant && participant.bestWpm !== null && participant.bestAccuracy !== null ? {
-            wpm: participant.bestWpm,
-            accuracy: participant.bestAccuracy,
+          best: participant && participant.bestWpm != null && participant.bestAccuracy != null ? {
+            wpm: participant.bestWpm as number,
+            accuracy: participant.bestAccuracy as number,
           } : null,
         },
       };
@@ -681,9 +681,9 @@ class TournamentStore {
         isNewBest,
         rank: myRank,
         totalParticipants: lb.length,
-        best: participant && participant.bestWpm !== null && participant.bestAccuracy !== null ? {
-          wpm: participant.bestWpm,
-          accuracy: participant.bestAccuracy,
+        best: participant && participant.bestWpm != null && participant.bestAccuracy != null ? {
+          wpm: participant.bestWpm as number,
+          accuracy: participant.bestAccuracy as number,
         } : null,
       },
     };

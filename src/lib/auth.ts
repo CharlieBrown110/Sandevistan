@@ -38,7 +38,12 @@ export function isValidUsername(username: string): boolean {
 }
 
 // In-memory session registry (fallback for local dev & serverless runtime)
-const activeSessions = new Map<string, AuthUser>();
+// Use globalThis to survive Next.js HMR (Hot Module Replacement) in dev mode
+const globalForSessions = globalThis as unknown as { activeSessions?: Map<string, AuthUser> };
+const activeSessions = globalForSessions.activeSessions ?? new Map<string, AuthUser>();
+if (process.env.NODE_ENV !== 'production') {
+  globalForSessions.activeSessions = activeSessions;
+}
 
 export function registerSession(token: string, user: AuthUser) {
   activeSessions.set(token, user);

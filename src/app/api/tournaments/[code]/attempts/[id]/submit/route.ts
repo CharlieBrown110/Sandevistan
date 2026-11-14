@@ -25,8 +25,10 @@ export async function POST(
     return apiError('unauthorized', 'Must be signed in to submit an attempt');
   }
 
+  store.upsertUser(session.user);
+
   const { code, id: attemptId } = params;
-  const tournament = store.getTournamentByCode(code);
+  const tournament = await store.getTournamentByCode(code);
   if (!tournament) {
     return apiError('not_found', 'Tournament not found');
   }

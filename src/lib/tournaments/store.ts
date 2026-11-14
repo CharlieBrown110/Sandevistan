@@ -4,6 +4,7 @@ import { getTournamentStatus, TournamentStatus } from './status';
 import { rankParticipants, RankedParticipant } from './rules';
 import { EngineResult, KeyEvent } from '../typing/types';
 import { verifyAttempt } from './verify';
+import { pool } from '@/lib/db';
 
 export interface UserRecord {
   id: string;
@@ -112,6 +113,15 @@ class TournamentStore {
       this.usersByUsername.set(u.username, u.id);
     });
 
+    if (pool) {
+      for (const u of [demoUser1, demoUser2, demoUser3]) {
+        pool.query(
+          'INSERT INTO users (id, name, email, username, image) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO NOTHING',
+          [u.id, u.name, u.email, u.username, u.image]
+        ).catch(() => {});
+      }
+    }
+
     const now = new Date();
     const demoTournament: TournamentRecord = {
       id: 'trn_afterlife_championship',
@@ -191,6 +201,14 @@ class TournamentStore {
     }
     this.users.set(user.id, record);
     this.usersByUsername.set(user.username.toLowerCase(), user.id);
+
+    if (pool) {
+      pool.query(
+        'INSERT INTO users (id, name, email, username, image) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (id) DO UPDATE SET username = EXCLUDED.username, name = EXCLUDED.name, image = EXCLUDED.image',
+        [record.id, record.name, record.email, record.username, record.image || null]
+      ).catch((err) => console.error('Failed to sync user to DB:', err));
+    }
+
     return record;
   }
 
@@ -207,6 +225,12 @@ class TournamentStore {
     this.usersByUsername.delete(user.username.toLowerCase());
     user.username = newUsername;
     this.usersByUsername.set(lower, userId);
+
+    if (pool) {
+      pool.query('UPDATE users SET username = $1 WHERE id = $2', [newUsername, userId])
+        .catch((err) => console.error('Failed to update username in DB:', err));
+    }
+
     return { success: true };
   }
 
@@ -225,7 +249,7 @@ class TournamentStore {
     startsAt: string;
     endsAt: string;
   }): TournamentRecord {
-    const id = `trn_${crypto.randomUUID()}`;
+    const id = crypto.randomUUID();
     let code = generateTournamentCode();
     while (this.tournamentsByCode.has(code)) {
       code = generateTournamentCode();
@@ -256,10 +280,67 @@ class TournamentStore {
     // Creator is joined automatically (Rule 2)
     this.joinTournament(record.id, data.creatorId);
 
+    if (pool) {
+      pool.query(
+        `INSERT INTO tournaments (id, code, creator_id, title, description, mode, mode_value, language, punctuation, numbers, min_accuracy, max_participants, starts_at, ends_at, canceled_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         ON CONFLICT (id) DO NOTHING`,
+        [record.id, record.code, record.creatorId, record.title, record.description, record.mode, record.modeValue, record.language, record.punctuation, record.numbers, record.minAccuracy, record.maxParticipants, record.startsAt, record.endsAt, record.canceledAt, record.createdAt]
+      ).catch((err) => console.error('Failed to insert tournament into DB:', err));
+
+      pool.query(
+        `INSERT INTO tournament_participants (tournament_id, user_id, joined_at)
+         VALUES ($1, $2, $3)
+         ON CONFLICT DO NOTHING`,
+        [record.id, data.creatorId, new Date().toISOString()]
+      ).catch((err) => console.error('Failed to insert participant into DB:', err));
+    }
+
     return record;
   }
 
-  getTournamentByCode(code: string): TournamentRecord | null {
+  async getTournamentByCode(code: string): Promise<TournamentRecord | null> {
+    const id = this.tournamentsByCode.get(code);
+    if (id && this.tournaments.has(id)) {
+      return this.tournaments.get(id) || null;
+    }
+
+    if (pool) {
+      try {
+        const res = await pool.query('SELECT * FROM tournaments WHERE code = $1 LIMIT 1', [code]);
+        if (res.rows.length > 0) {
+          const row = res.rows[0];
+          const record: TournamentRecord = {
+            id: row.id,
+            code: row.code,
+            creatorId: row.creator_id,
+            title: row.title,
+            description: row.description || '',
+            mode: row.mode,
+            modeValue: row.mode_value,
+            language: row.language,
+            punctuation: row.punctuation,
+            numbers: row.numbers,
+            minAccuracy: row.min_accuracy,
+            maxParticipants: row.max_participants,
+            startsAt: new Date(row.starts_at).toISOString(),
+            endsAt: new Date(row.ends_at).toISOString(),
+            canceledAt: row.canceled_at ? new Date(row.canceled_at).toISOString() : null,
+            createdAt: new Date(row.created_at).toISOString(),
+          };
+          this.tournaments.set(record.id, record);
+          this.tournamentsByCode.set(record.code, record.id);
+          return record;
+        }
+      } catch (err) {
+        console.error('Failed to get tournament from DB:', err);
+      }
+    }
+
+    return null;
+  }
+
+  getTournamentByCodeSync(code: string): TournamentRecord | null {
     const id = this.tournamentsByCode.get(code);
     return id ? this.tournaments.get(id) || null : null;
   }
@@ -273,7 +354,7 @@ class TournamentStore {
     creatorId: string,
     updates: Partial<Pick<TournamentRecord, 'title' | 'description' | 'endsAt' | 'mode' | 'modeValue' | 'punctuation' | 'numbers' | 'minAccuracy' | 'startsAt'>>
   ): { success: boolean; error?: string; tournament?: TournamentRecord } {
-    const t = this.getTournamentByCode(code);
+    const t = this.getTournamentByCodeSync(code);
     if (!t) return { success: false, error: 'Tournament not found' };
     if (t.creatorId !== creatorId) return { success: false, error: 'Only the creator can edit' };
 
@@ -312,15 +393,28 @@ class TournamentStore {
       if (updates.startsAt !== undefined) t.startsAt = updates.startsAt;
     }
 
+    if (pool) {
+      pool.query(
+        'UPDATE tournaments SET title = $1, description = $2, ends_at = $3 WHERE code = $4',
+        [t.title, t.description, t.endsAt, code]
+      ).catch((err) => console.error('Failed to update tournament in DB:', err));
+    }
+
     return { success: true, tournament: t };
   }
 
   cancelTournament(code: string, creatorId: string): { success: boolean; error?: string } {
-    const t = this.getTournamentByCode(code);
+    const t = this.getTournamentByCodeSync(code);
     if (!t) return { success: false, error: 'Tournament not found' };
     if (t.creatorId !== creatorId) return { success: false, error: 'Forbidden' };
 
     t.canceledAt = new Date().toISOString();
+
+    if (pool) {
+      pool.query('UPDATE tournaments SET canceled_at = $1 WHERE code = $2', [t.canceledAt, code])
+        .catch((err) => console.error('Failed to cancel tournament in DB:', err));
+    }
+
     return { success: true };
   }
 
@@ -344,7 +438,7 @@ class TournamentStore {
       return { success: false, error: 'Tournament is full' };
     }
 
-    this.participants.set(key, {
+    const participantRecord: ParticipantRecord = {
       tournamentId,
       userId,
       joinedAt: new Date().toISOString(),
@@ -353,7 +447,16 @@ class TournamentStore {
       bestWpm: null,
       bestAccuracy: null,
       bestAt: null,
-    });
+    };
+
+    this.participants.set(key, participantRecord);
+
+    if (pool) {
+      pool.query(
+        'INSERT INTO tournament_participants (tournament_id, user_id, joined_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+        [tournamentId, userId, participantRecord.joinedAt]
+      ).catch((err) => console.error('Failed to join tournament in DB:', err));
+    }
 
     return { success: true };
   }

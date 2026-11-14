@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { cookies } from 'next/headers';
 import { NextRequest } from 'next/server';
 
@@ -15,6 +16,31 @@ export interface Session {
 }
 
 export const SESSION_COOKIE_NAME = 'cyber_session_token';
+
+// In-memory session registry (fallback for local dev & serverless runtime)
+// Use globalThis to survive Next.js HMR (Hot Module Replacement) in dev mode
+const globalForSessions = globalThis as unknown as { activeSessions?: Map<string, AuthUser> };
+const activeSessions = globalForSessions.activeSessions ?? new Map<string, AuthUser>();
+if (process.env.NODE_ENV !== 'production') {
+  globalForSessions.activeSessions = activeSessions;
+}
+
+const AUTH_SECRET = process.env.BETTER_AUTH_SECRET || 'default-secret-change-in-production-12345';
+
+/**
+ * Creates a stateless signed session token containing the user payload.
+ * Format: base64url(JSON) + '.' + HMAC-SHA256(payload, secret)
+ * This allows ANY serverless lambda to verify the user without shared RAM.
+ */
+export function createSessionToken(user: AuthUser): string {
+  const payload = Buffer.from(JSON.stringify(user)).toString('base64url');
+  const hmac = crypto.createHmac('sha256', AUTH_SECRET).update(payload).digest('base64url');
+  const token = `${payload}.${hmac}`;
+  // Also register in memory for fast local lookup
+  activeSessions.set(token, user);
+  activeSessions.set(`sess_${user.id}`, user);
+  return token;
+}
 
 /**
  * Generates an edgerunner / cyberpunk style unique username.
@@ -37,14 +63,6 @@ export function isValidUsername(username: string): boolean {
   return /^[a-z0-9_]{3,20}$/.test(username);
 }
 
-// In-memory session registry (fallback for local dev & serverless runtime)
-// Use globalThis to survive Next.js HMR (Hot Module Replacement) in dev mode
-const globalForSessions = globalThis as unknown as { activeSessions?: Map<string, AuthUser> };
-const activeSessions = globalForSessions.activeSessions ?? new Map<string, AuthUser>();
-if (process.env.NODE_ENV !== 'production') {
-  globalForSessions.activeSessions = activeSessions;
-}
-
 export function registerSession(token: string, user: AuthUser) {
   activeSessions.set(token, user);
 }
@@ -54,7 +72,35 @@ export function removeSession(token: string) {
 }
 
 export function getUserFromToken(token: string): AuthUser | null {
-  return activeSessions.get(token) || null;
+  if (!token) return null;
+
+  // 1. Check in-memory map
+  if (activeSessions.has(token)) {
+    return activeSessions.get(token)!;
+  }
+
+  // 2. If it's a signed token (payload.signature)
+  if (token.includes('.')) {
+    try {
+      const [payload, sig] = token.split('.');
+      if (!payload || !sig) return null;
+
+      const expectedSig = crypto.createHmac('sha256', AUTH_SECRET).update(payload).digest('base64url');
+      const sigBuf = Buffer.from(sig);
+      const expectedBuf = Buffer.from(expectedSig);
+      if (sigBuf.length === expectedBuf.length && crypto.timingSafeEqual(sigBuf, expectedBuf)) {
+        const userJson = Buffer.from(payload, 'base64url').toString('utf8');
+        const user = JSON.parse(userJson) as AuthUser;
+        // Cache in memory for this container's lifetime
+        activeSessions.set(token, user);
+        return user;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
 }
 
 /**

@@ -12,6 +12,8 @@ export async function GET(req: NextRequest) {
     return apiError('unauthorized', 'Must be signed in');
   }
 
+  store.upsertUser(session.user);
+
   const list = store.getUserTournaments(session.user.id);
 
   return NextResponse.json({

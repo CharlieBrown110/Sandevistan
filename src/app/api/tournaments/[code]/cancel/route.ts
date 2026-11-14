@@ -12,6 +12,8 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
     return apiError('unauthorized', 'Must be signed in');
   }
 
+  store.upsertUser(session.user);
+
   const code = params.code;
   const res = store.cancelTournament(code, session.user.id);
 

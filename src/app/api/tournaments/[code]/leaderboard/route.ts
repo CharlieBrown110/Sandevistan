@@ -8,7 +8,7 @@ export const runtime = 'nodejs';
 
 export async function GET(req: NextRequest, { params }: { params: { code: string } }) {
   const code = params.code;
-  const tournament = store.getTournamentByCode(code);
+  const tournament = await store.getTournamentByCode(code);
   if (!tournament) {
     return apiError('not_found', 'Tournament not found');
   }

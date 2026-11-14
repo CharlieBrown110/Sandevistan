@@ -12,8 +12,10 @@ export async function POST(req: NextRequest, { params }: { params: { code: strin
     return apiError('unauthorized', 'Must be signed in to join tournament');
   }
 
+  store.upsertUser(session.user);
+
   const code = params.code;
-  const tournament = store.getTournamentByCode(code);
+  const tournament = await store.getTournamentByCode(code);
   if (!tournament) {
     return apiError('not_found', 'Tournament not found');
   }

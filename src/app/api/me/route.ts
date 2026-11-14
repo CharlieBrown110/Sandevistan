@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { getSession, isValidUsername } from '@/lib/auth';
+import { getSession, isValidUsername, createSessionToken, SESSION_COOKIE_NAME } from '@/lib/auth';
 import { store } from '@/lib/tournaments/store';
 import { apiError } from '@/lib/errors';
 
@@ -17,9 +17,9 @@ export async function GET(req: NextRequest) {
     return apiError('unauthorized', 'Must be signed in');
   }
 
-  const user = store.getUser(session.user.id);
+  let user = store.getUser(session.user.id);
   if (!user) {
-    return apiError('not_found', 'User not found');
+    user = store.upsertUser(session.user);
   }
 
   return NextResponse.json({
@@ -48,16 +48,39 @@ export async function PATCH(req: NextRequest) {
   }
 
   const newUsername = parseResult.data.username.toLowerCase();
+
+  // Ensure user is present in store for this container
+  if (!store.getUser(session.user.id)) {
+    store.upsertUser(session.user);
+  }
+
   const updateRes = store.updateUsername(session.user.id, newUsername);
 
   if (!updateRes.success) {
     return apiError('validation', updateRes.error || 'Username already taken', 400);
   }
 
-  const updatedUser = store.getUser(session.user.id);
+  const updatedUser = {
+    ...session.user,
+    username: newUsername,
+  };
+  store.upsertUser(updatedUser);
 
-  return NextResponse.json({
+  // Issue new session token with updated username so cookies reflect new username
+  const newToken = createSessionToken(updatedUser);
+
+  const res = NextResponse.json({
     success: true,
     user: updatedUser,
   });
+
+  res.cookies.set(SESSION_COOKIE_NAME, newToken, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 30 * 24 * 60 * 60,
+  });
+
+  return res;
 }

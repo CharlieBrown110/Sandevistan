@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { store } from '@/lib/tournaments/store';
-import { generateDefaultUsername, registerSession, removeSession, SESSION_COOKIE_NAME } from '@/lib/auth';
+import { generateDefaultUsername, createSessionToken, getSession, removeSession, SESSION_COOKIE_NAME } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -10,21 +10,19 @@ export async function GET(req: NextRequest, { params }: { params: { all: string[
 
   // Get current session endpoint
   if (path === 'session') {
-    const token = req.cookies.get(SESSION_COOKIE_NAME)?.value;
-    if (!token) {
+    const session = await getSession(req);
+    if (!session) {
       return NextResponse.json({ user: null });
     }
-    const user = store.getUser(token.replace('sess_', ''));
-    if (!user) {
-      return NextResponse.json({ user: null });
-    }
+    // Sync into current container's store
+    store.upsertUser(session.user);
     return NextResponse.json({
       user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        image: user.image,
-        username: user.username,
+        id: session.user.id,
+        name: session.user.name,
+        email: session.user.email,
+        image: session.user.image,
+        username: session.user.username,
       },
     });
   }
@@ -50,8 +48,7 @@ export async function POST(req: NextRequest, { params }: { params: { all: string
       username: customUsername,
     });
 
-    const token = `sess_${user.id}`;
-    registerSession(token, {
+    const token = createSessionToken({
       id: user.id,
       name: user.name,
       email: user.email,

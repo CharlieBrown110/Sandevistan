@@ -43,6 +43,9 @@ export async function POST(req: NextRequest) {
     return apiError('validation', parseResult.error.errors[0]?.message || 'Invalid form input');
   }
 
+  // Ensure creator user is registered in current container & DB
+  store.upsertUser(session.user);
+
   const data = parseResult.data;
   const tournament = store.createTournament({
     creatorId: session.user.id,
